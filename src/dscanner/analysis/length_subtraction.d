@@ -5,18 +5,13 @@
 
 module dscanner.analysis.length_subtraction;
 
-import std.stdio;
-
-import dparse.ast;
-import dparse.lexer;
 import dscanner.analysis.base;
 import dscanner.analysis.helpers;
-import dsymbol.scope_;
 
 /**
  * Checks for subtraction from a .length property. This is usually a bug.
  */
-final class LengthSubtractionCheck : BaseAnalyzer
+extern (C++) class LengthSubtractionCheck(AST) : BaseAnalyzerDmd
 {
 	private enum string KEY = "dscanner.suspicious.length_subtraction";
 
@@ -24,12 +19,15 @@ final class LengthSubtractionCheck : BaseAnalyzer
 
 	mixin AnalyzerInfo!"length_subtraction_check";
 
-	this(BaseAnalyzerArguments args)
+	private enum KEY = "dscanner.suspicious.length_subtraction";
+	private enum MSG = "Avoid subtracting from '.length' as it may be unsigned.";
+
+	extern(D) this(string fileName)
 	{
-		super(args);
+		super(fileName);
 	}
 
-	override void visit(const AddExpression addExpression)
+	override void visit(AST.MinExp minExpr)
 	{
 		if (addExpression.operator == tok!"-")
 		{
@@ -55,15 +53,16 @@ final class LengthSubtractionCheck : BaseAnalyzer
 
 unittest
 {
-	import dscanner.analysis.config : StaticAnalysisConfig, Check, disabledConfig;
+	import dscanner.analysis.config : Check, disabledConfig, StaticAnalysisConfig;
+	import dscanner.analysis.helpers : assertAnalyzerWarningsDMD, assertAutoFix;
+	import std.stdio : stderr;
 
 	StaticAnalysisConfig sac = disabledConfig();
 	sac.length_subtraction_check = Check.enabled;
-	assertAnalyzerWarnings(q{
+	assertAnalyzerWarningsDMD(q{
 		void testSizeT()
 		{
-			if (i < a.length - 1) /+
-			        ^^^^^^^^^^^^ [warn]: Avoid subtracting from '.length' as it may be unsigned. +/
+			if (i < a.length - 1) // [warn]: Avoid subtracting from '.length' as it may be unsigned.
 				writeln("something");
 		}
 	}c, sac);
@@ -81,5 +80,6 @@ unittest
 				writeln("something");
 		}
 	}c, sac);
+
 	stderr.writeln("Unittest for IfElseSameCheck passed.");
 }

@@ -5,38 +5,29 @@
 
 module dscanner.analysis.enumarrayliteral;
 
-import dparse.ast;
-import dparse.lexer;
 import dscanner.analysis.base;
-import std.algorithm : find, map;
-import dsymbol.scope_ : Scope;
 
-void doNothing(string, size_t, size_t, string, bool)
+extern (C++) class EnumArrayVisitor(AST) : BaseAnalyzerDmd
 {
-}
-
-final class EnumArrayLiteralCheck : BaseAnalyzer
-{
-	alias visit = BaseAnalyzer.visit;
-
+	alias visit = BaseAnalyzerDmd.visit;
 	mixin AnalyzerInfo!"enum_array_literal_check";
 
-	this(BaseAnalyzerArguments args)
+	private enum KEY = "dscanner.performance.enum_array_literal";
+
+	extern (D) this(string fileName)
 	{
-		super(args);
+		super(fileName);
 	}
 
-	bool looking;
+	override void visit(AST.VarDeclaration vd)
+    {
+		import dmd.astenums : STC, InitKind;
+		import std.string : toStringz;
 
-	mixin visitTemplate!ClassDeclaration;
-	mixin visitTemplate!InterfaceDeclaration;
-	mixin visitTemplate!UnionDeclaration;
-	mixin visitTemplate!StructDeclaration;
+		string message = "This enum may lead to unnecessary allocation at run-time. Use 'static immutable "
+							~ vd.ident.toString().idup() ~ " = [ ...' instead.";
 
-	override void visit(const AutoDeclaration autoDec)
-	{
-		auto enumToken = autoDec.storageClasses.find!(a => a.token == tok!"enum");
-		if (enumToken.length)
+		if (!vd.type && vd._init.kind == InitKind.array && vd.storage_class & STC.manifest)
 		{
 			foreach (part; autoDec.parts)
 			{
@@ -56,7 +47,8 @@ final class EnumArrayLiteralCheck : BaseAnalyzer
 						]);
 			}
 		}
-		autoDec.accept(this);
+
+		super.visit(vd);
 	}
 
 	private enum string KEY = "dscanner.performance.enum_array_literal";
@@ -65,14 +57,14 @@ final class EnumArrayLiteralCheck : BaseAnalyzer
 unittest
 {
 	import dscanner.analysis.config : Check, disabledConfig, StaticAnalysisConfig;
-	import dscanner.analysis.helpers : assertAnalyzerWarnings, assertAutoFix;
+	import dscanner.analysis.helpers : assertAnalyzerWarningsDMD, assertAutoFix;
 	import std.stdio : stderr;
 
 	StaticAnalysisConfig sac = disabledConfig();
 	sac.enum_array_literal_check = Check.enabled;
-	assertAnalyzerWarnings(q{
-		enum x = [1, 2, 3]; /+
-		         ^^^^^^^^^ [warn]: This enum may lead to unnecessary allocation at run-time. Use 'static immutable x = [ ...' instead. +/
+
+	assertAnalyzerWarningsDMD(q{
+		enum x = [1, 2, 3]; // [warn]: This enum may lead to unnecessary allocation at run-time. Use 'static immutable x = [ ...' instead.
 	}c, sac);
 
 	assertAutoFix(q{

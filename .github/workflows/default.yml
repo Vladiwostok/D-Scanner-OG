@@ -6,13 +6,14 @@ on:
   push:
     branches:
       - master
+      - replace_libdparse
 
 jobs:
   main:
     name: Run all tests
 
     # Only run for the main repository - not forks
-    if: ${{ github.repository == 'dlang-community/D-Scanner' }}
+    if: ${{ github.repository == 'Dlang-UPB/D-Scanner' }}
 
     # Run permutations of common os + host compilers
     strategy:
@@ -87,6 +88,10 @@ jobs:
            submodules: 'recursive'
            fetch-depth: 0
 
+      # Uncomment to get a ssh connection inside the GH Actions runner
+      #- name: Setup upterm session
+      #  uses: lhotari/action-upterm@v1
+
       # Install the host compiler (DMD or LDC)
       # Also grabs DMD for GDC to include dub + rdmd
       - name: Install ${{ matrix.compiler.version }}
@@ -102,6 +107,10 @@ jobs:
           sudo apt-get install gdc-12 -y
           gdc-12 --version
 
+#      - name: Setup upterm session
+#        if: ${{ matrix.build.type == 'dub' && matrix.host == 'macos-latest'}}
+#        uses: lhotari/action-upterm@v1
+
       # Compile D-Scanner and execute all tests without dub
       - name: Build and test without dub
         if: ${{ matrix.build.type == 'make' }}
@@ -114,7 +123,8 @@ jobs:
             ./build.bat
             ./build.bat test
           else
-            make "-j$(nproc)" all test
+            NUM_PROC=$(nproc || getconf _NPROCESSORS_ONLN || 1)
+            make "-j$((NUM_PROC / 2))" all test
           fi
 
       # Compile D-Scanner and execute all tests using a specific dependency version
@@ -135,7 +145,7 @@ jobs:
           dub build
           dub test
 
-      - uses: actions/upload-artifact@v2
+      - uses: actions/upload-artifact@v4
         with:
           name: bin-${{matrix.build.type}}-${{matrix.build.version}}-${{ matrix.compiler.dmd }}-${{ matrix.host }}
           path: bin
@@ -159,9 +169,20 @@ jobs:
           "./bin/dscanner$EXE" --styleCheck -f "$FORMAT" src
 
       - name: Integration Tests
-        run: ./it.sh
+#        run: ./it.sh
+        run: |
+          if [ "$RUNNER_OS" == "Windows" ]; then
+            ./it.sh Windows
+          else
+            ./it.sh Unix
+          fi
         working-directory: tests
         shell: bash
+
+      - name: Run style checks
+        if: ${{ matrix.compiler.dmd == 'dmd' && matrix.build.type == 'make' }}
+        run: |
+          make style
 
       # Parse phobos to check for failures / crashes / ...
       - name: Checkout Phobos
@@ -171,7 +192,7 @@ jobs:
           path: phobos
 
       - name: Apply D-Scanner to Phobos
-        if:  ${{ matrix.build.version != 'min libdparse'}} # Older versions crash with "Invalid UTF..."
+        if: ${{ matrix.build.version != 'min libdparse'}} # Older versions crash with "Invalid UTF..."
         working-directory: phobos
         shell: bash
         run: |
