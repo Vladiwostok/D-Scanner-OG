@@ -13,7 +13,7 @@ jobs:
     name: Run all tests
 
     # Only run for the main repository - not forks
-    if: ${{ github.repository == 'Dlang-UPB/D-Scanner' }}
+    if: ${{ github.repository == 'dlang-community/D-Scanner' }}
 
     # Run permutations of common os + host compilers
     strategy:
