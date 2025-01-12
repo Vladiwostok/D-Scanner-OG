@@ -419,7 +419,7 @@ else
 
 void printHelp(string programName)
 {
-	stderr.writefln(`
+	stdout.writefln(`
     Usage: %1$s <options>
 
 Human-readable output:
